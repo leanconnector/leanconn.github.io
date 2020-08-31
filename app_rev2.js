@@ -1,5 +1,5 @@
 async function fyfy() {
-  const response = await fetch('https://unpkg.com/turndown/dist/turndown.js');
+  const response = await fetch('https://unpkg.com/turndown/lib/turndown.browser.umd.js');
   const txt = await response.text();
   let se = document.createElement('script');
   se.type = 'text/javascript';
@@ -23,7 +23,7 @@ async function fyfy() {
     title = document.getElementsByTagName('h1')[0].innerText;
     author = document.querySelector('span[itemprop=author]').innerText;
     desc = document.querySelector('article[itemprop=description]').innerText;
-    
+
     desc = '[프래그매틱 링크](' + url + ') \nby ' + author + '\n\n';
     desc += document.querySelector('div[class$=book-details]').innerText + '\n' + 
             document.querySelector('article[itemprop=description]').innerText + '\n\n###목차\n\n';
@@ -45,19 +45,17 @@ async function fyfy() {
 
     desc = "[매닝 링크](" + url + ") \nby " + author + "\n\n";
     desc += [...document.getElementsByClassName('product-info')[0].querySelectorAll('li')].map(el => '- ' + el.innerText.trim()).join('\n');
-    
-    let quotes = document.getElementsByClassName('large-book-quote');
-    if(quotes.length > 0)
-      desc += '\n\n> ' + quotes[0].innerText.replace(/\n/g, '\n> ');
-    desc += '\n\n' + document.querySelector('div.description-body').innerText;
+
+    desc += '\n\n' + turndownService.turndown(document.querySelector('div.description-body').innerHTML.trim());
+
     desc += '\n\n###' + document.querySelector('div.header').childNodes[0].textContent.trim();
-    desc += '\n\n' + [...document.querySelector('div.toc').children].map(el => el.innerText.replace('READ IN LIVEBOOK\n', '').replace(/(^\d+) /, '$1\. ')).join('\n');
+    desc += '\n\n' + [...document.querySelector('div.toc').children].map(el => (el.querySelector('h2') || el).textContent).join('\n');
   }
   else if(url.indexOf('.amazon.') > -1) {
     // prettify URL
-    let pathArray = document.URL.split( '/' );
-    let protocol = pathArray[0];
-    let host = pathArray[2];
+    const pathArray = document.URL.split( '/' );
+    const protocol = pathArray[0];
+    const host = pathArray[2];
 
     let index;
     if(pathArray.indexOf('product') > -1) index = pathArray.indexOf('product') + 1;
@@ -75,16 +73,33 @@ async function fyfy() {
     if(author === null) author = '';
     else author = author.innerText;
 
-    desc = document.querySelector('td.bucket>div.content').innerText.replace(/\n\#/g, "\n\n- \\#");
+    //table of contents (packt only)
+    let descBody = document.getElementById('bookDescription_feature_div');
+    if(descBody && descBody.querySelector('script:not([id])')) {
+      descBody = descBody.querySelector('script:not([id])').text
+      .split('bookDescEncodedData = "')[1].split('",\n')[0]
+      .split('Table%20of%20Contents%3C%2Fh4%3E')[1];
+    }
+
+    desc = document.querySelector('div#detailBullets_feature_div').innerText.replace(/\n\#/g, "\n\n- \\#");
     let subIdx = desc.lastIndexOf('- \\#');
     let sub = desc.slice(subIdx).replace("\n", "\n\n");
     desc = desc.slice(0, subIdx) + sub;
 
-    desc = "[아마존 링크](" + url + ") \n" + author + "\n\n" + desc;
+    desc = '[아마존 링크](' + url + ') \n' + author + '\n\n' + desc;
+    if(descBody)
+      desc += '\n\n----\n###목차\n' + turndownService.turndown(decodeURIComponent(descBody));
+
+    desc = desc
+    .replace('Would you like to tell us about a lower price?', '')
+    .replace('If you are a seller for this product, would you like to suggest updates through seller support?', '')
+    .replace('이 상품을 출품하는 경우 출품자 지원을 통해 업데이트를 제안 하고 싶습니까?', '')
+    .replace('저렴한 가격에 대해 말씀해 주시겠습니까 ?', '')
+    .replace('이 제품의 판매자 인 경우 판매자 지원을 통해 업데이트 를 제안 하시겠습니까?', '');
 
     if(desc.indexOf('언어 : 일본어') > -1) {
       let toc = document.querySelectorAll('td.bucket>div.content li');
-      if(toc[toc.length-1].innerText == '목차보기')
+      if(toc.length > 0 && toc[toc.length-1].innerText == '목차보기')
         desc = desc.replace('목차보기', turndownService.turndown(toc[toc.length-1].innerHTML));
 
       let matches = desc.match(/^\d+ 위 ─.+$/gm);
